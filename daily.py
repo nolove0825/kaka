@@ -201,13 +201,17 @@ def daka(cardId):
 
 
 def send_mail_to_admin(subject, content):
-    utils.sendIp(subject, content, config.mail_from_usr,
+    # 你也可以用qq邮箱的配置
+    # utils.qq_send_mail
+    utils.lzu_send_mail(subject, content, config.mail_from_usr,
                  config.mail_from_usr_pw, config.mail_to_usr)
 
 
 def send_mail_to_usr(subject, content, mail_to_usr):
-    utils.sendIp(subject, content, config.mail_from_usr,
-                 config.mail_from_usr_pw, mail_to_usr)
+    # 你也可以用qq邮箱的配置
+    # utils.qq_send_mail
+    utils.lzu_send_mail(subject, content, config.mail_from_usr,
+                        config.mail_from_usr_pw, mail_to_usr)
 
 
 def save_log(content, log_file_name):
