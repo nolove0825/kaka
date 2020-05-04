@@ -83,10 +83,24 @@ def get_id_num(data):
 def get_usr_msg(data):
 
     cardId = get_id(data)
+    fxdj = int(data["fxdj"])
 
-    return get_name(
-        data) + cardId + "  邮箱" + config.usrs[cardId] + "qq.com\nsjd: " + str(
+    msg = get_name(data) + cardId + "  邮箱" + config.usrs[
+            cardId] + "qq.com"
+
+    if fxdj == 1:
+        msg = msg + "\nsjd: " + str(
             data["sjd"]) + "\n\n" + get_da_ka(data) + "\n\n" + str(data)
+    elif fxdj == 0:
+
+        msg = msg + "\n\n上报时间: " + str(
+            data["list"][0]["sbsj"]) +  "\n\n" + str(
+                data)
+        
+    else:
+        msg = msg + "\n身份判断错误，不知道应该打卡三次还是一次"
+
+    return msg
 
 
 def get_log_file_name(data):
@@ -108,8 +122,10 @@ def sublime(data):
 
     sjd_ = data["sjd"]  # 0早上，1中午，2下午，“”此时不能打卡
     daily = data["list"][0]
+    fxdj = int(data["fxdj"]) #0在家，上报一次，1在学校，上报三次
 
-    if len(sjd_) == 0:
+    if (len(sjd_) == 0 and fxdj==1):
+
         msg = "此时不能打卡：   " + get_usr_msg(data)
         # 正常不应该发生这个问题！
 
@@ -119,10 +135,15 @@ def sublime(data):
             raise Exception(msg)
 
     else:
-        n = int(sjd_)
         wds = [daily["zcwd"], daily["zwwd"], daily["wswd"]]
-        if wds[n] == None:
-            wds[n] = get_temp(n)
+        print(fxdj)
+
+        if (fxdj == 1 and wds[n] == None) or (fxdj == 0 and daily["sbsj"] == None):
+            if fxdj == 1:
+                n = int(sjd_)
+                wds[n] = get_temp(n)
+            elif fxdj == 0:
+                wds = [0.0, 0.0, 0.0]
 
             param = {
                 "bh": daily["bh"],
@@ -146,7 +167,7 @@ def sublime(data):
                 "zcwd": wds[0],
                 "zwwd": wds[1],
                 "wswd": wds[2],
-                "sbr": daily["sbr"],
+                "sbr": daily["xm"],
                 "sjd": sjd_
             }
 
@@ -188,6 +209,10 @@ def daka(cardId):
             time.sleep(sleep_time)
 
         md5 = getMD5(cardId)
+
+        if test_:
+            print(md5)
+
         data = getInfo(cardId, md5)
         sublime(data)
 
@@ -220,6 +245,8 @@ def save_log(content, log_file_name):
 
 def start_auto():
     for cardId in cardIds:
+        if test_:
+            print(cardId)
         p = Process(target=daka, args=(cardId, ))
         p.start()
 
