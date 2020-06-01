@@ -6,7 +6,8 @@ from dateutil.parser import parse
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-
+import psutil
+import config
 
 file_max_size = 1  # Mb，日志文件多大保存一次
 cache_dir = os.path.abspath('.') + "/cache"
@@ -14,12 +15,12 @@ log_dir = os.path.abspath('.') + "/log"
 
 # ============ time ========
 
-
-
 # ============ log =========
 
+
 def save_log2(content_, log_file_name, test):
-    content = "********************  " + getTime() +"  ********************" + "    \n" + str(content_) +  "\n\n\n"
+    content = "********************  " + getTime(
+    ) + "  ********************" + "    \n" + str(content_) + "\n\n\n"
     if test:
         print(log_file_name + "\n" + content)
     else:
@@ -37,6 +38,7 @@ def save_log(content, log_file_name):
 
     file_size(log_file)
 
+
 # M
 def file_size(log_file):
     log_name = os.path.split(log_file)[1].replace(".log", "")
@@ -49,21 +51,45 @@ def file_size(log_file):
         shutil.move(log_file, ip_cache_dir_ + "/" + getTime() + ".log")
     return fsize
 
+
 def getTime():
     return time.strftime('%Y_%m_%d-%H_%M_%S', time.localtime(time.time()))
+
 
 def make_dir(dir):
     if not os.path.exists(dir):
         os.makedirs(dir)
 
 
-def qq_send_mail(subject, content, mail_from_usr, mail_from_usr_pw, mail_to_usr):
+def sendIp(subject, content, mail_from_usr, mail_from_usr_pw, mail_to_usr):
+    lzu_send_mail(subject, content, mail_from_usr, mail_from_usr_pw,
+                  mail_to_usr)
+
+
+def send_mail_to_admin(subject, content):
+    # 你也可以用qq邮箱的配置
+    # utils.qq_send_mail
+    lzu_send_mail(subject, content, config.mail_from_usr,
+                  config.mail_from_usr_pw, config.mail_to_usr)
+
+
+def send_mail_to_usr(subject, content, mail_to_usr):
+    # 你也可以用qq邮箱的配置
+    # utils.qq_send_mail
+    lzu_send_mail(subject, content, config.mail_from_usr,
+                  config.mail_from_usr_pw, mail_to_usr)
+
+
+def qq_send_mail(subject, content, mail_from_usr, mail_from_usr_pw,
+                 mail_to_usr):
     send_mail(subject, content, mail_from_usr, mail_from_usr_pw, mail_to_usr,
               "smtp.qq.com")
 
+
 def lzu_send_mail(subject, content, mail_from_usr, mail_from_usr_pw,
                   mail_to_usr):
-    send_mail(subject, content, mail_from_usr, mail_from_usr_pw, mail_to_usr, "smtp.lzu.edu.cn")
+    send_mail(subject, content, mail_from_usr, mail_from_usr_pw, mail_to_usr,
+              "smtp.lzu.edu.cn")
 
 
 def send_mail(subject,
@@ -103,3 +129,15 @@ def send_mail(subject,
     except Exception as e:
         save_log2("邮件发送失败：\n" + subject + "\n" + content, "mail.log", False)
         print(e)
+
+
+def get_out_ip():
+    return psutil.net_if_addrs()["enp4s0"][0][1]
+
+
+def get_cpu_rate():
+    return psutil.cpu_percent(interval=1.0)
+
+
+def get_hostname():
+    return os.uname().nodename

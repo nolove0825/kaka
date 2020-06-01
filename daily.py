@@ -14,8 +14,11 @@ from multiprocessing import Process  #导入multiprocessing模块，然后导入
 from dateutil.parser import parse
 from datetime import datetime
 import config
+from bs4 import BeautifulSoup
 
-test_ = config.test
+test_ = True
+
+host_lzu = "http://appservice.lzu.edu.cn/dailyReportAll/api"
 
 headers = {
     "User-Agent":
@@ -23,27 +26,120 @@ headers = {
 }
 
 
-def getMD5(cardId):
+def login(usr, password):
+    session = requests.session()
+    s = session.get(
+        "http://my.lzu.edu.cn:8080/login?service=http://my.lzu.edu.cn",
+        headers=headers).text
+
+    soup = BeautifulSoup(s, features="lxml")
+
+    lt = str(
+        soup.select(
+            '#loginForm > div:nth-child(2) > div.cell-input > input[type=hidden]:nth-child(2)'
+        )[0]["value"])
+    execution = str(
+        soup.select(
+            '#loginForm > div:nth-child(2) > div.cell-input > input[type=hidden]:nth-child(3)'
+        )[0]["value"])
+    # print(lt)
+    # print(execution)
+
+    datas = {
+        "username": usr,
+        "password": password,
+        "lt": lt,
+        "execution": execution,
+        "_eventId": "submit",
+        "btn": ""
+    }
+    # print(datas)
+
+    response = session.post(
+        "http://my.lzu.edu.cn:8080/login",
+        data=datas,
+        headers=headers,
+        # allow_redirects=False
+    )
+    # s1 = response.text
+
+    # soup1 = BeautifulSoup(s1, features="lxml")
+    # errMsg = str(soup1.select('#errMsg').text)
+    # print(errMsg)
+
+    cookies = requests.utils.dict_from_cookiejar(response.cookies)
+    # print(cookies)
+
+    return session
+
+
+def getMD5(cardId, session):
+
+    # t = 1591023714641
+    #     datas =
+    datas0 = {"t": str(time.time())}
+    datas1 = {"service": "http://127.0.0.1"}
+
+    s0 = session.post("http://my.lzu.edu.cn/isExpire",
+                      data=datas0,
+                      headers=headers).text
+    # print(s0)
+
+    s1 = session.post("http://my.lzu.edu.cn/api/getST",
+                      data=datas1,
+                      headers=headers).text
+    print(s1)
+    st = json.loads(s1.strip())["data"]
+    url_auth = host_lzu + "/auth/login?st=" + st + "&PersonID=" + str(cardId)
+
+    s2 = session.get(url_auth, headers=headers).text
+
+    accessToken = json.loads(s2.strip())["data"]["accessToken"]
+
+    # print("s2 ==== " + s2 + "\n\n" + accessToken)
+
     datas = {"cardId": cardId}
 
-    s = requests.post("http://202.201.13.180:9037/encryption/getMD5",
-                      headers=headers,
-                      data=datas).text.strip()
-
+    # print("---- " + str(datas))
+    headers["Authorization"] = accessToken
+    # print(headers)
+    response = session.post(host_lzu + "/encryption/getMD5",
+                            headers=headers,
+                            data=datas)
+    s = response.text.strip()
     jsons = json.loads(s)
+
     if jsons["code"] == 1:
         md5 = jsons["data"]
         return md5
     else:
+        # print(response.url)
         raise Exception("获取md5错误\n" + s)
 
 
-def getInfo(cardId, md5):
+def getUsr(session):
+
+    response = session.post(
+        "http://my.lzu.edu.cn/getUser",
+        headers=headers,
+    )
+    s = response.text.strip()
+    jsons = json.loads(s)
+
+    if jsons["state"] == 1:
+        idcard = jsons["data"]["rybh"]
+        return idcard
+    else:
+        print(response.url)
+        raise Exception("获取cardid错误\n" + s)
+
+
+def getInfo(cardId, md5, session):
     param = {"cardId": cardId, "md5": md5}
 
-    url = "http://202.201.13.180:9037/grtbMrsb/getInfo"
+    url = host_lzu + "/grtbMrsb/getInfo"
 
-    s = requests.post(url, headers=headers, data=param).text.strip()
+    s = session.post(url, headers=headers, data=param).text.strip()
 
     jsons = json.loads(s)
     if jsons["code"] == 1:
@@ -80,27 +176,13 @@ def get_id_num(data):
     return data["list"][0]["xykh"]
 
 
-def get_usr_msg(data):
+def get_usr_msg(data, usr_msg):
 
     cardId = get_id(data)
-    fxdj = int(data["fxdj"])
 
-    msg = get_name(data) + cardId + "  邮箱" + config.usrs[
-            cardId] + "qq.com"
-
-    if fxdj == 1:
-        msg = msg + "\nsjd: " + str(
+    return get_name(data) + cardId + "  邮箱" + config.usrs[
+        usr_msg] + "@qq.com\nsjd: " + str(
             data["sjd"]) + "\n\n" + get_da_ka(data) + "\n\n" + str(data)
-    elif fxdj == 0:
-
-        msg = msg + "\n\n上报时间: " + str(
-            data["list"][0]["sbsj"]) +  "\n\n" + str(
-                data)
-        
-    else:
-        msg = msg + "\n身份判断错误，不知道应该打卡三次还是一次"
-
-    return msg
 
 
 def get_log_file_name(data):
@@ -118,32 +200,24 @@ def get_da_ka(data):
     return msg
 
 
-def sublime(data):
+def sublime(data, session, usr_msg):
 
     sjd_ = data["sjd"]  # 0早上，1中午，2下午，“”此时不能打卡
     daily = data["list"][0]
-    fxdj = int(data["fxdj"]) #0在家，上报一次，1在学校，上报三次
 
-    if (len(sjd_) == 0 and fxdj==1):
-
-        msg = "此时不能打卡：   " + get_usr_msg(data)
+    if len(sjd_) == 0:
+        msg = "此时不能打卡：   " + get_usr_msg(data, usr_msg)
         # 正常不应该发生这个问题！
-
         if test_:
-            print("此时不能打卡：   " + get_usr_msg(data))
+            print(msg)
         else:
             raise Exception(msg)
 
     else:
+        n = int(sjd_)
         wds = [daily["zcwd"], daily["zwwd"], daily["wswd"]]
-        print(fxdj)
-
-        if (fxdj == 1 and wds[n] == None) or (fxdj == 0 and daily["sbsj"] == None):
-            if fxdj == 1:
-                n = int(sjd_)
-                wds[n] = get_temp(n)
-            elif fxdj == 0:
-                wds = [0.0, 0.0, 0.0]
+        if wds[n] == None:
+            wds[n] = get_temp(n)
 
             param = {
                 "bh": daily["bh"],
@@ -167,20 +241,21 @@ def sublime(data):
                 "zcwd": wds[0],
                 "zwwd": wds[1],
                 "wswd": wds[2],
-                "sbr": daily["xm"],
+                "sbr": daily["sbr"],
                 "sjd": sjd_
             }
 
-            url = "http://202.201.13.180:9037/grtbMrsb/submit"
+            url = host_lzu + "/grtbMrsb/submit"
 
-            s = requests.post(url, headers=headers, data=param).text.strip()
+            s = session.post(url, headers=headers, data=param).text.strip()
 
             jsons = json.loads(s)
             if jsons["code"] == 1:
                 message = jsons["message"]
                 cardId = get_id_num(data)
-                msg = "打卡成功：   " + get_usr_msg(getInfo(cardId, getMD5(cardId)))
-                print(msg)
+                msg = "打卡成功：   " + get_usr_msg(getInfo(cardId, getMD5(cardId)),
+                                               usr_msg)
+                # print(msg)
                 save_log(msg, get_log_file_name(data))
 
                 if not test_:
@@ -189,15 +264,15 @@ def sublime(data):
 
                 return param
             else:
-                raise Exception("提交错误\n" + get_usr_msg(data) + "\n\n" + param +
-                                "\n\n" + s)
+                raise Exception("提交错误\n" + get_usr_msg(data, usr_msg) +
+                                "\n\n" + param + "\n\n" + s)
 
         else:
-            msg = "已经打过卡了：   " + get_usr_msg(data)
+            msg = "已经打过卡了：   " + get_usr_msg(data, usr_msg)
             save_log(msg, get_log_file_name(data))
 
 
-def daka(cardId):
+def daka(usr_msg):
 
     try:
         if not test_:
@@ -207,36 +282,34 @@ def daka(cardId):
             sleep_time = sleep_min * 60 + sleep_sec
 
             time.sleep(sleep_time)
+        usr_name = usr_msg.split("|")[0]
+        usr_pw = usr_msg.split("|")[1]
 
-        md5 = getMD5(cardId)
+        session = login(usr_name, usr_pw)
+        idcard = getUsr(session)
+        md5 = getMD5(idcard, session)
+        data = getInfo(idcard, md5, session)
 
-        if test_:
-            print(md5)
-
-        data = getInfo(cardId, md5)
-        sublime(data)
+        sublime(data, session, usr_msg)
 
     except Exception as err:
 
         msg = "\n\n" + str(err)
-        save_log(msg, str(cardId) + ".log")
+        save_log(msg, str(idcard) + ".log")
 
         if not test_:
             send_mail_to_admin("打卡错误  ", msg)
 
 
 def send_mail_to_admin(subject, content):
-    # 你也可以用qq邮箱的配置
-    # utils.qq_send_mail
-    utils.lzu_send_mail(subject, content, config.mail_from_usr,
-                 config.mail_from_usr_pw, config.mail_to_usr)
+    utils.sendIp(utils.get_hostname() + "：" + subject, content,
+                 config.mail_from_usr, config.mail_from_usr_pw,
+                 config.mail_to_usr)
 
 
 def send_mail_to_usr(subject, content, mail_to_usr):
-    # 你也可以用qq邮箱的配置
-    # utils.qq_send_mail
-    utils.lzu_send_mail(subject, content, config.mail_from_usr,
-                        config.mail_from_usr_pw, mail_to_usr)
+    utils.sendIp(subject, content, config.mail_from_usr,
+                 config.mail_from_usr_pw, mail_to_usr)
 
 
 def save_log(content, log_file_name):
@@ -245,8 +318,6 @@ def save_log(content, log_file_name):
 
 def start_auto():
     for cardId in cardIds:
-        if test_:
-            print(cardId)
         p = Process(target=daka, args=(cardId, ))
         p.start()
 
