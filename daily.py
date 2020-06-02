@@ -26,12 +26,18 @@ headers = {
 }
 
 
+
 def login(usr, password):
     session = requests.session()
+    # s = session.get(
+    #     "http://my.lzu.edu.cn:8080/login?service=http://my.lzu.edu.cn",
+    #     headers=headers).text
+
+    # soup = BeautifulSoup(s, features="lxml")
+    # if soup.select("#captcha"):
     s = session.get(
         "http://my.lzu.edu.cn:8080/login?service=http://my.lzu.edu.cn",
         headers=headers).text
-
     soup = BeautifulSoup(s, features="lxml")
 
     lt = str(
@@ -61,11 +67,15 @@ def login(usr, password):
         headers=headers,
         # allow_redirects=False
     )
-    # s1 = response.text
 
-    # soup1 = BeautifulSoup(s1, features="lxml")
-    # errMsg = str(soup1.select('#errMsg').text)
-    # print(errMsg)
+    s1 = response.text
+    # print(s1)
+
+    soup1 = BeautifulSoup(s1, features="lxml")
+    errMsg = soup1.select('#errMsg')
+    print(errMsg)
+    if str(errMsg).find("visibility:visible") > -1:
+        raise Exception("登录错误！\n" + str(errMsg[0].get_text()))
 
     cookies = requests.utils.dict_from_cookiejar(response.cookies)
     # print(cookies)
@@ -163,7 +173,6 @@ def get_temp(n):
 
     return temp
 
-
 def get_name(data):
     return str(data["list"][0]["xm"])
 
@@ -192,7 +201,7 @@ def get_log_file_name(data):
 def get_da_ka(data):
 
     msg = ""
-    dailys = data["list"]
+    dailys =  data["list"]
     for daily in dailys:
         msg = "早晨：" + str(daily["zcsbsj"]) + "：" + str(daily["zcwd"]) + "\n中午：" + \
             str(daily["zwsbsj"]) + "：" + str(daily["zwwd"]) + "\n晚上：" +\
@@ -200,9 +209,9 @@ def get_da_ka(data):
     return msg
 
 
-def sublime(data, session, usr_msg):
+def sublime(data, session, usr_msg, idcard):
 
-    sjd_ = data["sjd"]  # 0早上，1中午，2下午，“”此时不能打卡
+    sjd_ = data["sjd"] # 0早上，1中午，2下午，“”此时不能打卡
     daily = data["list"][0]
 
     if len(sjd_) == 0:
@@ -253,8 +262,8 @@ def sublime(data, session, usr_msg):
             if jsons["code"] == 1:
                 message = jsons["message"]
                 cardId = get_id_num(data)
-                msg = "打卡成功：   " + get_usr_msg(getInfo(cardId, getMD5(cardId)),
-                                               usr_msg)
+                msg = "打卡成功：   " + get_usr_msg(
+                    getInfo(cardId, getMD5(idcard, session)), usr_msg)
                 # print(msg)
                 save_log(msg, get_log_file_name(data))
 
@@ -285,26 +294,26 @@ def daka(usr_msg):
         usr_name = usr_msg.split("|")[0]
         usr_pw = usr_msg.split("|")[1]
 
-        session = login(usr_name, usr_pw)
+        session = login(usr_name,  usr_pw)
         idcard = getUsr(session)
         md5 = getMD5(idcard, session)
         data = getInfo(idcard, md5, session)
 
-        sublime(data, session, usr_msg)
+        sublime(data, session, usr_msg, idcard)
 
     except Exception as err:
 
         msg = "\n\n" + str(err)
-        save_log(msg, str(idcard) + ".log")
+        print(msg)
+        save_log(msg, str(usr_msg) + ".log")
 
         if not test_:
             send_mail_to_admin("打卡错误  ", msg)
 
 
 def send_mail_to_admin(subject, content):
-    utils.sendIp(utils.get_hostname() + "：" + subject, content,
-                 config.mail_from_usr, config.mail_from_usr_pw,
-                 config.mail_to_usr)
+    utils.sendIp(utils.get_hostname() + "：" + subject, content, config.mail_from_usr,
+                 config.mail_from_usr_pw, config.mail_to_usr)
 
 
 def send_mail_to_usr(subject, content, mail_to_usr):
@@ -318,8 +327,9 @@ def save_log(content, log_file_name):
 
 def start_auto():
     for cardId in cardIds:
-        p = Process(target=daka, args=(cardId, ))
+        p=Process(target=daka, args=(cardId,))
         p.start()
+
 
 
 cardIds = config.usrs.keys()
@@ -338,6 +348,10 @@ else:
                       hour=config.time_hour,
                       minute=config.time_min)
     scheduler.start()
+
+
+
+
 
 # zc_0 = parse("6:00")
 # zc_1 = parse("10:00")
