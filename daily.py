@@ -263,7 +263,7 @@ def sublime(data, session, usr_msg, idcard):
                 message = jsons["message"]
                 cardId = get_id_num(data)
                 msg = "打卡成功：   " + get_usr_msg(
-                    getInfo(cardId, getMD5(idcard, session)), usr_msg)
+                    getInfo(cardId, getMD5(idcard, session), session), usr_msg)
                 # print(msg)
                 save_log(msg, get_log_file_name(data))
 
