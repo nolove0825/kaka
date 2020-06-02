@@ -268,7 +268,7 @@ def sublime(data, session, usr_msg, idcard):
                 save_log(msg, get_log_file_name(data))
 
                 if not test_:
-                    qq_mail = config.usrs[cardId] + "@qq.com"
+                    qq_mail = config.usrs[usr_msg] + "@qq.com"
                     send_mail_to_usr("打卡成功", msg, qq_mail)
 
                 return param
